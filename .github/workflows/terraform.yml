@@ -49,9 +49,9 @@ jobs:
       id: plan
       run: |
         if [ -f "production.tfvars" ]; then
-          terraform plan -var-file=production.tfvars -var="aws_region=${{ env.AWS_REGION }}" -out=tfplan
+          terraform plan -var-file=production.tfvars -out=tfplan
         else
-          terraform plan -var="aws_region=${{ env.AWS_REGION }}" -out=tfplan
+          terraform plan -out=tfplan
         fi
         
         # Capture the plan status
