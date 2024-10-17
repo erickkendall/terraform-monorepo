@@ -41,16 +41,30 @@ jobs:
     - name: Terraform Plan
       run: |
         if [ -f "production.tfvars" ]; then
-          terraform plan -var-file=production.tfvars
+          terraform plan -var-file=production.tfvars -out=tfplan
         else
-          terraform plan
+          terraform plan -out=tfplan
+        fi
+        
+        # Capture the plan status
+        if [ $? -eq 0 ]; then
+          echo "plan_status=success" >> $GITHUB_OUTPUT
+        else
+          echo "plan_status=failure" >> $GITHUB_OUTPUT
         fi
 
     - name: Terraform Apply
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outputs.plan_status == 'success'
       run: |
         if [ -f "production.tfvars" ]; then
-          terraform apply -auto-approve -var-file=production.tfvars
+          terraform apply -auto-approve -var-file=production.tfvars tfplan
         else
-          terraform apply -auto-approve
+          terraform apply -auto-approve tfplan
+        fi
+        
+        # Capture the apply status
+        if [ $? -eq 0 ]; then
+          echo "apply_status=success" >> $GITHUB_OUTPUT
+        else
+          echo "apply_status=failure" >> $GITHUB_OUTPUT
         fi
