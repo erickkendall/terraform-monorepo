@@ -94,3 +94,16 @@ jobs:
       with:
         name: terraform_output
         path: tf_output.json
+
+    - name: Terraform Apply
+      id: destroy
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outputs.plan_status == 'success'
+      run: |
+        terraform destroy -auto-approve
+        
+        # Capture the apply status
+        if [ $? -eq 0 ]; then
+          echo "apply_status=success" >> $GITHUB_OUTPUT
+        else
+          echo "apply_status=failure" >> $GITHUB_OUTPUT
+        fi
