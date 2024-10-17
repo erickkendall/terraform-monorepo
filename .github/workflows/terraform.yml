@@ -11,17 +11,22 @@ on:
         description: 'Environment to deploy to (dev/test/qa/production)'
         required: true
         default: 'dev'
-
-env:
-  AWS_REGION: us-east-1  # Set your desired AWS region here
-  TF_ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
+        type: choice
+        options:
+        - dev
+        - test
+        - qa
+        - production
 
 jobs:
   terraform:
     name: 'Terraform'
     runs-on: ubuntu-latest
     
-    environment: ${{ env.TF_ENVIRONMENT }}
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    
+    env:
+      AWS_REGION: us-east-1  # Set your desired AWS region here
     
     defaults:
       run:
@@ -47,7 +52,7 @@ jobs:
       run: |
         terraform init \
           -backend-config="region=${{ env.AWS_REGION }}" \
-          -backend-config="key=terraform/${{ env.TF_ENVIRONMENT }}.tfstate"
+          -backend-config="key=terraform/${{ github.event.inputs.environment || 'dev' }}.tfstate"
 
     - name: Terraform Format
       run: terraform fmt -check
@@ -55,10 +60,11 @@ jobs:
     - name: Terraform Plan
       id: plan
       run: |
-        if [ -f "${{ env.TF_ENVIRONMENT }}.tfvars" ]; then
-          terraform plan -var-file=${{ env.TF_ENVIRONMENT }}.tfvars -out=tfplan
+        ENV="${{ github.event.inputs.environment || 'dev' }}"
+        if [ -f "${ENV}.tfvars" ]; then
+          terraform plan -var-file=${ENV}.tfvars -out=tfplan
         else
-          echo "No ${{ env.TF_ENVIRONMENT }}.tfvars file found. Using default variables."
+          echo "No ${ENV}.tfvars file found. Using default variables."
           terraform plan -out=tfplan
         fi
         
@@ -74,31 +80,3 @@ jobs:
 
     - name: Upload Terraform Plan
       uses: actions/upload-artifact@v4
-      with:
-        name: tfplan-${{ env.TF_ENVIRONMENT }}
-        path: tfplan.txt
-
-    - name: Terraform Apply
-      id: apply
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outputs.plan_status == 'success'
-      run: |
-        terraform apply -auto-approve tfplan
-        
-        # Capture the apply status
-        if [ $? -eq 0 ]; then
-          echo "apply_status=success" >> $GITHUB_OUTPUT
-        else
-          echo "apply_status=failure" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Terraform Output
-      if: steps.apply.outputs.apply_status == 'success'
-      run: |
-        terraform output -json > tf_output.json
-
-    - name: Upload Terraform Output
-      if: steps.apply.outputs.apply_status == 'success'
-      uses: actions/upload-artifact@v4
-      with:
-        name: terraform_output-${{ env.TF_ENVIRONMENT }}
-        path: tf_output.json
