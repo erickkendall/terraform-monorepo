@@ -39,8 +39,18 @@ jobs:
       run: terraform fmt -check
 
     - name: Terraform Plan
-      run: terraform plan -var-file=production.tfvars
+      run: |
+        if [ -f "production.tfvars" ]; then
+          terraform plan -var-file=production.tfvars
+        else
+          terraform plan
+        fi
 
     - name: Terraform Apply
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      run: terraform apply -auto-approve -var-file=production.tfvars
+      run: |
+        if [ -f "production.tfvars" ]; then
+          terraform apply -auto-approve -var-file=production.tfvars
+        else
+          terraform apply -auto-approve
+        fi
