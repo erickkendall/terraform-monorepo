@@ -95,7 +95,7 @@ jobs:
         name: terraform_output
         path: tf_output.json
 
-    - name: Terraform Apply
+    - name: Terraform Destroy
       id: destroy
       if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outputs.plan_status == 'success'
       run: |
