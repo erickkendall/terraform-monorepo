@@ -6,16 +6,22 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to (dev/test/qa/production)'
+        required: true
+        default: 'dev'
 
 env:
   AWS_REGION: us-east-1  # Set your desired AWS region here
+  TF_ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
 
 jobs:
   terraform:
     name: 'Terraform'
     runs-on: ubuntu-latest
     
-    environment: production
+    environment: ${{ env.TF_ENVIRONMENT }}
     
     defaults:
       run:
@@ -40,7 +46,8 @@ jobs:
     - name: Terraform Init
       run: |
         terraform init \
-          -backend-config="region=${{ env.AWS_REGION }}"
+          -backend-config="region=${{ env.AWS_REGION }}" \
+          -backend-config="key=terraform/${{ env.TF_ENVIRONMENT }}.tfstate"
 
     - name: Terraform Format
       run: terraform fmt -check
@@ -48,9 +55,10 @@ jobs:
     - name: Terraform Plan
       id: plan
       run: |
-        if [ -f "production.tfvars" ]; then
-          terraform plan -var-file=production.tfvars -out=tfplan
+        if [ -f "${{ env.TF_ENVIRONMENT }}.tfvars" ]; then
+          terraform plan -var-file=${{ env.TF_ENVIRONMENT }}.tfvars -out=tfplan
         else
+          echo "No ${{ env.TF_ENVIRONMENT }}.tfvars file found. Using default variables."
           terraform plan -out=tfplan
         fi
         
@@ -67,7 +75,7 @@ jobs:
     - name: Upload Terraform Plan
       uses: actions/upload-artifact@v4
       with:
-        name: tfplan
+        name: tfplan-${{ env.TF_ENVIRONMENT }}
         path: tfplan.txt
 
     - name: Terraform Apply
@@ -92,5 +100,5 @@ jobs:
       if: steps.apply.outputs.apply_status == 'success'
       uses: actions/upload-artifact@v4
       with:
-        name: terraform_output
+        name: terraform_output-${{ env.TF_ENVIRONMENT }}
         path: tf_output.json
