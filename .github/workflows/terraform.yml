@@ -1,11 +1,17 @@
 name: Deploy EC2 with Terraform
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+        - dev
+        - staging
+        - prod
 
 env:
   AWS_REGION: us-east-1  # Set your desired AWS region here
@@ -15,7 +21,7 @@ jobs:
     name: 'Terraform'
     runs-on: ubuntu-latest
     
-    environment: dev
+    environment: ${{ github.event.inputs.environment }}
     
     defaults:
       run:
@@ -95,15 +101,15 @@ jobs:
         name: terraform_output
         path: tf_output.json
 
-    - name: Terraform Destroy
-      id: destroy
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outputs.plan_status == 'success'
-      run: |
-        terraform destroy -auto-approve
-        
-        # Capture the apply status
-        if [ $? -eq 0 ]; then
-          echo "apply_status=success" >> $GITHUB_OUTPUT
-        else
-          echo "apply_status=failure" >> $GITHUB_OUTPUT
-        fi
+#    - name: Terraform Destroy
+#      id: destroy
+#      if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outputs.plan_status == 'success'
+#      run: |
+#        terraform destroy -auto-approve
+#        
+#        # Capture the apply status
+#        if [ $? -eq 0 ]; then
+#          echo "apply_status=success" >> $GITHUB_OUTPUT
+#        else
+#          echo "apply_status=failure" >> $GITHUB_OUTPUT
+#        fi
