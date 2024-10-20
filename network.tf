@@ -63,7 +63,7 @@ resource "aws_nat_gateway" "main" {
 
 # Create Elastic IPs for NAT Gateways
 resource "aws_eip" "nat" {
-  count = length(aws_subnet.public)
+  count                     = length(aws_subnet.public)
   associate_with_private_ip = true
 
   tags = {

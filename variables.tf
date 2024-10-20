@@ -14,7 +14,7 @@ variable "project_name" {
   description = "The name of the project"
   type        = string
   default     = "my-project"
-  
+
 }
 
 variable "instance_type" {
