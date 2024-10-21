@@ -7,7 +7,7 @@ variable "region" {
 variable "environment" {
   description = "The environment in which the resources will be deployed"
   type        = string
-  default     = "dev"
+  default     = "prod"
 }
 
 variable "project_name" {
