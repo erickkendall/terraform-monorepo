@@ -5,10 +5,9 @@ data "aws_availability_zones" "available" {
 
 # Create VPC
 resource "aws_vpc" "main" {
-  cidr_block           = var.vpc_cidr_block
-  enable_dns_hostnames = true
+  cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
-
+  enable_dns_hostnames = true
   tags = {
     Name = "${var.project_name}-vpc"
   }
@@ -17,7 +16,6 @@ resource "aws_vpc" "main" {
 # Create Internet Gateway
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
-
   tags = {
     Name = "${var.project_name}-igw"
   }
@@ -50,36 +48,30 @@ resource "aws_subnet" "private" {
 
 # Create NAT Gateways
 resource "aws_nat_gateway" "main" {
-  count         = length(aws_subnet.public)
+  count         = min(length(var.public_subnet_cidr_blocks), 2)
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.public[count.index].id
-
   tags = {
-    Name = "${var.project_name}-nat-gw-${count.index + 1}"
+    Name = "${var.project_name}-nat-gateway-${count.index + 1}"
   }
-
-  depends_on = [aws_internet_gateway.main]
 }
 
 # Create Elastic IPs for NAT Gateways
 resource "aws_eip" "nat" {
-  count                     = length(aws_subnet.public)
-  associate_with_private_ip = true
-
+  count = min(length(var.public_subnet_cidr_blocks), 2)
+  vpc   = true
   tags = {
-    Name = "${var.project_name}-eip-${count.index + 1}"
+    Name = "${var.project_name}-nat-eip-${count.index + 1}"
   }
 }
 
 # Create route table for public subnets
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
-
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.main.id
   }
-
   tags = {
     Name = "${var.project_name}-public-rt"
   }
@@ -87,7 +79,7 @@ resource "aws_route_table" "public" {
 
 # Create route table for private subnets
 resource "aws_route_table" "private" {
-  count  = length(aws_subnet.private)
+  count  = min(length(aws_subnet.private), 2)
   vpc_id = aws_vpc.main.id
 
   route {
@@ -114,26 +106,84 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private[count.index].id
 }
 
-# Create a default Network ACL
-resource "aws_default_network_acl" "default" {
-  default_network_acl_id = aws_vpc.main.default_network_acl_id
-
-  ingress {
-    protocol   = -1
-    rule_no    = 100
-    action     = "allow"
-    cidr_block = "0.0.0.0/0"
-    from_port  = 0
-    to_port    = 0
+locals {
+  nacl_rules = {
+    http = {
+      port        = 80
+      protocol    = "tcp"
+      cidr_block  = "0.0.0.0/0"
+      rule_number = 100
+    }
+    https = {
+      port        = 443
+      protocol    = "tcp"
+      cidr_block  = "0.0.0.0/0"
+      rule_number = 110
+    }
+    ephemeral_inbound = {
+      from_port   = 1024
+      to_port     = 65535
+      protocol    = "tcp"
+      cidr_block  = "0.0.0.0/0"
+      rule_number = 120
+    }
+    ephemeral_outbound = {
+      from_port   = 1024
+      to_port     = 65535
+      protocol    = "tcp"
+      cidr_block  = "0.0.0.0/0"
+      rule_number = 130
+    }
   }
 
-  egress {
-    protocol   = -1
-    rule_no    = 100
-    action     = "allow"
-    cidr_block = "0.0.0.0/0"
-    from_port  = 0
-    to_port    = 0
+  sg_rules = {
+    http = {
+      port        = 80
+      protocol    = "tcp"
+      description = "Allow HTTP traffic"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+    https = {
+      port        = 443
+      protocol    = "tcp"
+      description = "Allow HTTPS traffic"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+    ephemeral_inbound = {
+      from_port   = 1024
+      to_port     = 65535
+      protocol    = "tcp"
+      description = "Allow inbound traffic from client ephemeral ports"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+}
+
+resource "aws_default_network_acl" "default" {
+  default_network_acl_id = aws_vpc.main.id
+
+  dynamic "ingress" {
+    for_each = { for k, v in local.nacl_rules : k => v if k != "ephemeral_outbound" }
+    content {
+      protocol   = ingress.value.protocol
+      rule_no    = ingress.value.rule_number
+      action     = "allow"
+      cidr_block = ingress.value.cidr_block
+      from_port  = lookup(ingress.value, "from_port", lookup(ingress.value, "port", 0))
+      to_port    = lookup(ingress.value, "to_port", lookup(ingress.value, "port", 0))
+    }
+  }
+
+  dynamic "egress" {
+    for_each = local.nacl_rules
+    content {
+      protocol   = egress.value.protocol
+      rule_no    = egress.value.rule_number
+      action     = "allow"
+      cidr_block = egress.value.cidr_block
+      from_port  = lookup(egress.value, "from_port", lookup(egress.value, "port", 0))
+      to_port    = lookup(egress.value, "to_port", lookup(egress.value, "port", 0))
+    }
   }
 
   tags = {
@@ -141,15 +191,20 @@ resource "aws_default_network_acl" "default" {
   }
 }
 
-# Create a default security group
-resource "aws_default_security_group" "default" {
-  vpc_id = aws_vpc.main.id
+resource "aws_security_group" "main" {
+  name        = "${var.project_name}-sg"
+  description = "Security group for ${var.project_name}"
+  vpc_id      = aws_vpc.main.id
 
-  ingress {
-    protocol  = -1
-    self      = true
-    from_port = 0
-    to_port   = 0
+  dynamic "ingress" {
+    for_each = local.sg_rules
+    content {
+      description = ingress.value.description
+      from_port   = lookup(ingress.value, "from_port", lookup(ingress.value, "port", 0))
+      to_port     = lookup(ingress.value, "to_port", lookup(ingress.value, "port", 0))
+      protocol    = ingress.value.protocol
+      cidr_blocks = ingress.value.cidr_blocks
+    }
   }
 
   egress {
@@ -160,6 +215,6 @@ resource "aws_default_security_group" "default" {
   }
 
   tags = {
-    Name = "${var.project_name}-default-sg"
+    Name = "${var.project_name}-sg"
   }
 }

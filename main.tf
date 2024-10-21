@@ -25,11 +25,11 @@ resource "aws_key_pair" "ssh_key" {
 
 resource "aws_instance" "app" {
 
-  count = var.instances_per_subnet * length(var.private_subnet_cidr_blocks)
-  ami = data.aws_ami.ubuntu.id
-  subnet_id = aws_subnet.private[count.index % length(aws_subnet.private)].id 
+  count         = var.instances_per_subnet * length(var.private_subnet_cidr_blocks)
+  ami           = data.aws_ami.ubuntu.id
+  subnet_id     = aws_subnet.private[count.index % length(aws_subnet.private)].id
   instance_type = var.instance_type
-    
+
   user_data = <<-EOF
     sudo apt-get update -y
     sudo apt-get install apache2 -y
